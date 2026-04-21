@@ -1,51 +1,48 @@
 const express = require('express');
-const multer = require('multer');
-const { PNG } = require('pngjs');
-const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
-
 app.use(express.urlencoded({ extended: true }));
 
-const LOGIN = 'danilrozhin';
-
-const UserSchema = new mongoose.Schema({
-    login: String,
-    password: String
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, ngrok-skip-browser-warning');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
 });
 
-const User = mongoose.model('User', UserSchema, 'users');
+const LOGIN = 'danilrozhin';
 
 app.get('/login/', (req, res) => {
     res.send(LOGIN);
 });
 
 app.post('/insert/', async (req, res) => {
+    const { login, password, URL } = req.body;
+    let client;
+    
     try {
-        const { login, password, URL } = req.body;
-
-        if (mongoose.connection.readyState === 0) {
-            await mongoose.connect(URL, {
-                useNewUrlParser: true,
-                useUnifiedTopology: true
-            });
+        if (!login || !password || !URL) {
+            return res.status(400).json({ error: 'Missing fields' });
         }
-
-        const user = new User({ login, password });
-        await user.save();
-
-        res.status(201).json({ 
-            message: 'User inserted successfully',
-            user: { login, password }
+        
+        client = new MongoClient(URL, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true
         });
-
+        
+        await client.connect();
+        const db = client.db();
+        await db.collection('users').insertOne({ login, password });
+        
+        res.status(201).json({ message: 'User inserted successfully' });
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ 
-            error: 'Database error',
-            details: error.message 
-        });
+        res.status(500).json({ error: error.message });
+    } finally {
+        if (client) await client.close();
     }
 });
 
